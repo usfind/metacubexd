@@ -1,0 +1,68 @@
+name: Build MetaCubeXD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release-please:
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: release-please
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release-type: node
+
+  release-assets:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          cache: pnpm
+          node-version: latest
+
+      - name: install dependencies
+        run: pnpm install
+
+      - name: build
+        run: NUXT_APP_BASE_URL='./' pnpm generate
+
+      - name: publish gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./.output/public
+          force_orphan: true
+          commit_message: "deploy: ${{ needs.release-please.outputs.tag_name }}"
+
+      - name: compress dist to zip
+        run: |
+          cd .output/public
+          zip -r ../../metacubexd.zip .
+          cd ../../
+
+      - name: attach github release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: metacubexd.zip
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
