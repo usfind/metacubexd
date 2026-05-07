@@ -1,0 +1,51 @@
+name: Build MetaCubeXD
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_version:
+        description: ''
+        required: true
+        default: '1.888.1'
+
+jobs:
+  Build-And-Release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Create Zip Archive
+        run: |
+          zip -r metacubexd.zip . -x "*.git*" "*.github*" "*.md*" "metacubexd.zip"
+
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.event.inputs.tag_version }}
+        run: |
+          TAG="v${VERSION}"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$TAG already exists, uploading artifact..."
+            gh release upload "$TAG" metacubexd.zip --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            echo "Creating new release $TAG..."
+            gh release create "$TAG" metacubexd.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "${TAG}" \
+              --notes "Manual build from branch ${GITHUB_REF_NAME}"
+          fi
+
+      - name: Extract zip for gh-pages
+        run: |
+          mkdir -p ./.output/public
+          unzip -q metacubexd.zip -d ./.output/public
+
+      - name: publish gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./.output/public
+          force_orphan: true
+          commit_message: "v${{ github.event.inputs.tag_version }}"
